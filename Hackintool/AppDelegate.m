@@ -648,12 +648,9 @@ void authorizationGrantedCallback(AuthorizationRef authorization, OSErr status, 
 	
 	for (NSDictionary *systemDictionary in _systemsArray)
 	{
-		NSString *model = [systemDictionary objectForKey:@"Model"];
-		NSString *modelIdentifier = [systemDictionary objectForKey:@"Model Identifier"];
+		NSString *model = [systemDictionary objectForKey:@"Name"];
+		NSString *modelIdentifier = [systemDictionary objectForKey:@"Model ID"];
 		NSString *modelEntry = [NSString stringWithFormat:@"%@ (%@)", model, modelIdentifier];
-		
-		if ([modelIdentifier isEqualToString:@"N/A"])
-			continue;
 		
 		[modelArray addObject:modelEntry];
 	}
@@ -668,10 +665,7 @@ void authorizationGrantedCallback(AuthorizationRef authorization, OSErr status, 
 	
 	for (NSDictionary *systemDictionary in _systemsArray)
 	{
-		NSString *modelIdentifier = [systemDictionary objectForKey:@"Model Identifier"];
-		
-		if ([modelIdentifier isEqualToString:@"N/A"])
-			continue;
+		NSString *modelIdentifier = [systemDictionary objectForKey:@"Model ID"];
 		
 		if (selectedIndex == 0 && [_modelIdentifier isEqualToString:modelIdentifier])
 			selectedIndex = systemCount;
@@ -680,6 +674,8 @@ void authorizationGrantedCallback(AuthorizationRef authorization, OSErr status, 
 	}
 	
 	[_modelInfoComboBox selectItemAtIndex:selectedIndex];
+	
+	[self updateModelInfo];
 }
 
 - (uint32_t)getModelIndex:(NSString *)modelName
@@ -687,8 +683,8 @@ void authorizationGrantedCallback(AuthorizationRef authorization, OSErr status, 
 	for (int i = 0; i < _systemsArray.count; i++)
 	{
 		NSDictionary *systemDictionary = _systemsArray[i];
-		NSString *model = [systemDictionary objectForKey:@"Model"];
-		NSString *modelIdentifier = [systemDictionary objectForKey:@"Model Identifier"];
+		NSString *model = [systemDictionary objectForKey:@"Name"];
+		NSString *modelIdentifier = [systemDictionary objectForKey:@"Model ID"];
 		NSString *modelEntry = [NSString stringWithFormat:@"%@ (%@)", model, modelIdentifier];
 		
 		if (![modelName isEqualToString:modelEntry])
@@ -754,8 +750,8 @@ void authorizationGrantedCallback(AuthorizationRef authorization, OSErr status, 
 
 	for (NSDictionary *systemDictionary in _systemsArray)
 	{
-		NSString *model = [systemDictionary objectForKey:@"Model"];
-		NSString *modelIdentifier = [systemDictionary objectForKey:@"Model Identifier"];
+		NSString *model = [systemDictionary objectForKey:@"Name"];
+		NSString *modelIdentifier = [systemDictionary objectForKey:@"Model ID"];
 		NSString *modelEntry = [NSString stringWithFormat:@"%@ (%@)", model, modelIdentifier];
 		
 		if ([_modelInfoComboBox.stringValue isEqualToString:modelEntry])
@@ -3008,6 +3004,9 @@ void authorizationGrantedCallback(AuthorizationRef authorization, OSErr status, 
 			NSString *projectUrl = [kextDictionary objectForKey:@"ProjectUrl"];
 			NSString *projectFileUrl = [kextDictionary objectForKey:@"ProjectFileUrl"];
 			NSString *outputPath = [buildPath stringByAppendingPathComponent:name];
+			NSString *tempDebugPath = [tempPath stringByAppendingPathComponent:@"Debug"];
+			NSString *tempReleasePath = [tempPath stringByAppendingPathComponent:@"Release"];
+			
 			NSString *projectFileName = (projectFileUrl != nil ? [[projectFileUrl lastPathComponent] stringByRemovingPercentEncoding] : [name stringByAppendingString:@".xcodeproj"]);
 			NSString *updateGitSubmodules = @"cd $(OUTPUT_PATH) && $(SUBMODULE_UPDATE)";
 			bool isLilu = [name isEqualToString:@"Lilu"];
@@ -3024,8 +3023,11 @@ void authorizationGrantedCallback(AuthorizationRef authorization, OSErr status, 
 			updateGitSubmodules = [updateGitSubmodules stringByReplacingOccurrencesOfString:@"$(OUTPUT_PATH)" withString:outputPath];
 			updateGitSubmodules = [updateGitSubmodules stringByReplacingOccurrencesOfString:@"$(SUBMODULE_UPDATE)" withString:GitSubmoduleUpdate];
             launchCommand(@"/bin/bash", @[@"-c", updateGitSubmodules], self,  @selector(compileOutputNotification:), @selector(compileErrorNotification:), @selector(compileCompleteNotification:));
-			launchCommand(@"/usr/bin/xcodebuild", @[@"-project", [outputPath stringByAppendingPathComponent:projectFileName], @"-configuration", @"Debug", @"clean", @"build", @"ARCHS=x86_64", @"WARNING_CFLAGS=-w", [NSString stringWithFormat:@"CONFIGURATION_BUILD_DIR=%@", debugPath]], self, @selector(compileOutputNotification:), @selector(compileErrorNotification:), @selector(compileCompleteNotification:));
-			launchCommand(@"/usr/bin/xcodebuild", @[@"-project", [outputPath stringByAppendingPathComponent:projectFileName], @"-configuration", @"Release", @"clean", @"build", @"ARCHS=x86_64", @"WARNING_CFLAGS=-w", [NSString stringWithFormat:@"CONFIGURATION_BUILD_DIR=%@", releasePath]], self, @selector(compileOutputNotification:), @selector(compileErrorNotification:), @selector(compileCompleteNotification:));
+			launchCommand(@"/usr/bin/xcodebuild", @[@"-project", [outputPath stringByAppendingPathComponent:projectFileName], @"-configuration", @"Debug", @"clean", @"build", @"ARCHS=x86_64", @"WARNING_CFLAGS=-w", [NSString stringWithFormat:@"CONFIGURATION_BUILD_DIR=%@", tempDebugPath]], self, @selector(compileOutputNotification:), @selector(compileErrorNotification:), @selector(compileCompleteNotification:));
+			launchCommand(@"/usr/bin/xcodebuild", @[@"-project", [outputPath stringByAppendingPathComponent:projectFileName], @"-configuration", @"Release", @"clean", @"build", @"ARCHS=x86_64", @"WARNING_CFLAGS=-w", [NSString stringWithFormat:@"CONFIGURATION_BUILD_DIR=%@", tempReleasePath]], self, @selector(compileOutputNotification:), @selector(compileErrorNotification:), @selector(compileCompleteNotification:));
+			
+			launchCommand(@"/bin/cp", @[@"-r", [tempDebugPath stringByAppendingPathComponent:@"."], debugPath], self, @selector(compileOutputNotification:), @selector(compileErrorNotification:), @selector(compileCompleteNotification:));
+			launchCommand(@"/bin/cp", @[@"-r", [tempReleasePath stringByAppendingPathComponent:@"."], releasePath], self, @selector(compileOutputNotification:), @selector(compileErrorNotification:), @selector(compileCompleteNotification:));
 			
 			double progressPercent = (double)++compileIndex / (double)compileCount;
 			
@@ -3047,6 +3049,8 @@ void authorizationGrantedCallback(AuthorizationRef authorization, OSErr status, 
 			NSString *projectFileUrl = [kextDictionary objectForKey:@"ProjectFileUrl"];
 			NSString *superseder = [kextDictionary objectForKey:@"Superseder"];
 			NSString *outputPath = [buildPath stringByAppendingPathComponent:name];
+			NSString *tempDebugPath = [tempPath stringByAppendingPathComponent:@"Debug"];
+			NSString *tempReleasePath = [tempPath stringByAppendingPathComponent:@"Release"];
 			NSString *outputLiluKextPath = [outputPath stringByAppendingPathComponent:@"Lilu.kext"];
 			NSString *liluKextPath = [debugPath stringByAppendingPathComponent:@"Lilu.kext"];
 			NSString *projectFileName = (projectFileUrl != nil ? [[projectFileUrl lastPathComponent] stringByRemovingPercentEncoding] : [name stringByAppendingString:@".xcodeproj"]);
@@ -3096,8 +3100,8 @@ void authorizationGrantedCallback(AuthorizationRef authorization, OSErr status, 
 				launchCommand(@"/bin/bash", @[@"-c", preBuildBash], self, @selector(compileOutputNotification:), @selector(compileErrorNotification:), @selector(compileCompleteNotification:));
 			}
 			
-			NSMutableArray *debugArguments = [NSMutableArray arrayWithObjects:@"-project", [outputPath stringByAppendingPathComponent:projectFileName], @"-configuration", @"Debug", @"clean", @"build", @"ARCHS=x86_64", [NSString stringWithFormat:@"CONFIGURATION_BUILD_DIR=%@", debugPath], nil];
-			NSMutableArray *releaseArguments = [NSMutableArray arrayWithObjects:@"-project", [outputPath stringByAppendingPathComponent:projectFileName], @"-configuration", @"Release", @"clean", @"build", @"ARCHS=x86_64", [NSString stringWithFormat:@"CONFIGURATION_BUILD_DIR=%@", releasePath], nil];
+			NSMutableArray *debugArguments = [NSMutableArray arrayWithObjects:@"-project", [outputPath stringByAppendingPathComponent:projectFileName], @"-configuration", @"Debug", @"clean", @"build", @"ARCHS=x86_64", [NSString stringWithFormat:@"CONFIGURATION_BUILD_DIR=%@", tempDebugPath], nil];
+			NSMutableArray *releaseArguments = [NSMutableArray arrayWithObjects:@"-project", [outputPath stringByAppendingPathComponent:projectFileName], @"-configuration", @"Release", @"clean", @"build", @"ARCHS=x86_64", [NSString stringWithFormat:@"CONFIGURATION_BUILD_DIR=%@", tempReleasePath], nil];
 			
 			if (scheme != nil)
 			{
@@ -3107,6 +3111,9 @@ void authorizationGrantedCallback(AuthorizationRef authorization, OSErr status, 
 			
 			launchCommand(@"/usr/bin/xcodebuild", debugArguments, self, @selector(compileOutputNotification:), @selector(compileErrorNotification:), @selector(compileCompleteNotification:));
 			launchCommand(@"/usr/bin/xcodebuild", releaseArguments, self, @selector(compileOutputNotification:), @selector(compileErrorNotification:), @selector(compileCompleteNotification:));
+			
+			launchCommand(@"/bin/cp", @[@"-r", [tempDebugPath stringByAppendingPathComponent:@"."], debugPath], self, @selector(compileOutputNotification:), @selector(compileErrorNotification:), @selector(compileCompleteNotification:));
+			launchCommand(@"/bin/cp", @[@"-r", [tempReleasePath stringByAppendingPathComponent:@"."], releasePath], self, @selector(compileOutputNotification:), @selector(compileErrorNotification:), @selector(compileCompleteNotification:));
 			
 			double progressPercent = (double)++compileIndex / (double)compileCount;
 			
